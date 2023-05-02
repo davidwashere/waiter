@@ -2,53 +2,44 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/davidwashere/waiter/waiter"
 )
 
+var wm *waiter.Manager[string]
+
+func main() {
+	log.Println("start")
+
+	// the manager manages and coordinates between waiters and sendors
+	wm = waiter.NewManager[string]()
+
+	// manager must be started in order to process messages
+	wm.Start(context.Background())
+
+	// a successfully created waiter will have a unique ID
+	w, err := wm.NewWaiter()
+	check(err)
+
+	doAsyncTask(w.ID())
+
+	// wait for async task to send a respone to the waiter manager
+	r, err := w.Wait(context.Background())
+	check(err)
+	log.Printf("result: %v\n", r)
+}
+
+func doAsyncTask(id string) {
+	go func() {
+		time.Sleep(2 * time.Second)
+		wm.Send(id, "done", nil)
+	}()
+}
+
 func check(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func main() {
-	wm := waiter.NewManager[string]()
-	wm.Start(context.Background())
-
-	wg := sync.WaitGroup{}
-
-	var ids []string
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		w, err := wm.NewWaiter()
-		if err != nil {
-			log.Fatal(err)
-		}
-		ids = append(ids, w.ID())
-
-		go func(w waiter.Waiter[string]) {
-			defer wg.Done()
-			w.Wait(ctx)
-		}(w)
-	}
-
-	fmt.Println(ids)
-
-	ids = ids[:len(ids)/2]
-
-	for _, id := range ids {
-		wm.Send(id, "howdy", nil)
-	}
-
-	wg.Wait()
-	time.Sleep(1 * time.Second)
 }
